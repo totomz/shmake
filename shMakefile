@@ -1,0 +1,14 @@
+#!/bin/bash
+
+function build() {
+  install # run install before
+  # shellcheck disable=SC2154
+  echo "running build() - Hello, ${key2}"
+  
+}
+
+function install() {    
+    # shellcheck disable=SC2154
+    echo "running install() - ${parameter} rulez!"
+}
+

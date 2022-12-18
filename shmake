@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+
+function usage() {
+    echo "shmake <target> [--parameter1=value1 [--parameter2=value]]"
+}
+
+function echodebug() {
+  # log debug
+  # echo "shmake: $1" 
+  true # A function body can't be empty 
+}
+
+if [[ $# -eq 0 ]]; then
+  usage
+  exit 0
+fi
+
+# Parse arguments. 
+# The first argument is the target to invoke, , then it expects variables
+TARGET=$1
+shift 
+
+while [[ $# -gt 0 ]]; do     
+  v=$1
+  shift 
+  if [[ $v == --* ]]; then
+    echodebug "parsing $v"
+    key=$(echo "$v" | awk -F= '{print $1}' | sed 's/-//g')
+    value=$(echo "$v" | awk -F= '{print $2}')
+    echodebug "    -> parameter key: ${key}"
+    echodebug "    -> parameter value: ${value}"
+    
+    eval "${key}=${value}"
+    
+    else 
+      echo "unknown command: $1"
+  fi 
+done
+
+if [ ! -f "${PWD}/shMakefile" ]
+then
+	echo "No shMakefile found"
+	exit 101
+fi
+
+source "${PWD}/shMakefile"
+if [[ $? -gt 0 ]]; then
+  echo "error in shMakefile"
+  exit 102
+fi
+echodebug "shMakefile sourced"
+
+echo "invoking ${TARGET}"
+eval "${TARGET}"
