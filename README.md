@@ -24,5 +24,6 @@ Then, the output of `shmake build --parameter=shmake --key2=World` is
 # Install
 Simply, put `shmake` in your $PATH, eg 
 ```shell
-
+curl -o ~/bin/shmake "https://raw.githubusercontent.com/totomz/shmake/main/shmake"
+chmod +x ~/bin/shmake
 ```
