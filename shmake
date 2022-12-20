@@ -1,46 +1,107 @@
 #!/usr/bin/env bash
 
-function usage() {
-    echo "shmake <target> [--parameter1=value1 [--parameter2=value]]"
+usage() {
+  echo "shmake <target> [--parameter1=value1 [--parameter2=value]]"
 }
 
-function echodebug() {
+echodebug() {
   # log debug
-  # echo "shmake: $1" 
-  true # A function body can't be empty 
+  # echo "shmake: $1"
+  true # A function body can't be empty
 }
+
+####################
+# Common functions #
+####################
+
+setcolor() {
+  RED='\033[31;49m'
+  CYAN='\033[36;49m'
+  NOCOLOR='\033[39;49m'  
+}
+
+# gitver returns the current git commit short hash
+gitver() {
+  git rev-parse --short HEAD
+}
+
+# expectKubeContext - returns true if the current kube-context match the first argument
+# passed to this function
+expectKubeContext() {
+    want=$1
+    got=$(kubectl config current-context)    
+    if [ "${want}" != "${got}" ]; then
+      echo -e "${RED}ERROR${NOCOLOR} Invalid kubectl-context:"
+      echo -e "    got: ${got}"
+      echo -e "   want: ${want}"      	
+      exit 121
+    fi 
+    
+    true
+}
+
+# everythingIsCommitted - fail if there are uncommitted changes in the repo
+everythingIsCommitted() {
+  nDiff=$(git diff -w "@{upstream}" | wc -l | tr -d ' ')
+  if [[ ${nDiff} -ne 0  ]]; then
+    echo -e "${RED}ERROR${NOCOLOR} Please commit and push (or discard) your changes before deploying:"
+    git diff -w "@{upstream}"
+    exit 122
+  fi
+  
+  true
+}
+
+# log a message to stdout with a datetime and colors, if `setcolor` has been invoked
+log() {
+  echo -e "${CYAN}$(date +%FT%T)${NOCOLOR} | $1"
+}
+
+# mustVar panic if the variable is not set
+mustVar() {
+  varname=$1
+  varvalue=${!varname}
+  
+  if [ -z "$varvalue" ]; then    
+    echo -e "${RED}ERROR${NOCOLOR} missing required parameter --${varname}"
+    exit 123
+  fi
+}
+
+#####################
+# Invoke the target #
+#####################
 
 if [[ $# -eq 0 ]]; then
   usage
   exit 0
 fi
 
-# Parse arguments. 
+# Parse arguments.
 # The first argument is the target to invoke, , then it expects variables
 TARGET=$1
-shift 
+shift
 
-while [[ $# -gt 0 ]]; do     
+while [[ $# -gt 0 ]]; do
   v=$1
-  shift 
+  shift
   if [[ $v == --* ]]; then
     echodebug "parsing $v"
     key=$(echo "$v" | awk -F= '{print $1}' | sed 's/-//g')
     value=$(echo "$v" | awk -F= '{print $2}')
     echodebug "    -> parameter key: ${key}"
     echodebug "    -> parameter value: ${value}"
-    
+
     eval "${key}=${value}"
-    
-    else 
-      echo "unknown command: $1"
-  fi 
+
+  else
+    echo "unknown command: $1"
+  fi
 done
 
-if [ ! -f "${PWD}/shMakefile" ]
-then
-	echo "No shMakefile found"
-	exit 101
+if [ ! -f "${PWD}/shMakefile" ]; then
+  echo "No shMakefile found"
+  exit 101
 fi
 
 source "${PWD}/shMakefile"
@@ -50,5 +111,4 @@ if [[ $? -gt 0 ]]; then
 fi
 echodebug "shMakefile sourced"
 
-echo "invoking ${TARGET}"
 eval "${TARGET}"

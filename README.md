@@ -27,3 +27,12 @@ Simply, put `shmake` in your $PATH, eg
 curl -o ~/bin/shmake "https://raw.githubusercontent.com/totomz/shmake/main/shmake"
 chmod +x ~/bin/shmake
 ```
+
+
+# Builtin functions
+These functions can be used in the target
+```shell
+
+gitVersion=$()
+
+```
