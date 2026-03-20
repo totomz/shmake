@@ -1,8 +1,0 @@
-#!/bin/bash 
-
-source ../../shMakefile
-
-function pippo() {
-    install
-    echo "pippo!"
-}

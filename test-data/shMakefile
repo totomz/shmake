@@ -1,0 +1,9 @@
+inner-func(){
+  ## inner function
+  echo "inner ${aval}"
+}
+
+_inner-func(){
+  ## secret inner function
+  echo "secret inner ${aval}"
+}
