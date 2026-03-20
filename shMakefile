@@ -30,8 +30,8 @@ alice() {
   ##    -name your name
   mustVar env
   
-  # Everythingwith the form `--<key>=value` is passed as a named variable 
-  echo "DIOOOOO alice ${env} ${name}"
+  # Everything with the form `--<key>=value` is passed as a named variable 
+  echo "alice ${env} ${name}"
 }
 
 bob() {
