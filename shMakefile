@@ -1,14 +1,98 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-function build() {
-  install # run install before
-  # shellcheck disable=SC2154
-  echo "running build() - Hello, ${key2}"
+set -e
+
+# utilities functions, keep as first import
+source ./functions.sh
+
+# Each service defines its own build/deploy functions in a local shMakefile.
+# Sourcing them here makes those functions available as targets in this root shMakefile,
+# so you can call e.g. `./shMakefile build-appetizer` from the repo root.
+# But this has a risk: it would source any shMakefile found in subdirectories, including nested ones you might not intend. The explicit list is more predictable and safe.
+shopt -s globstar
+for f in ./**/shMakefile; do
+  # skip myself
+  [[ "$f" == "./shMakefile" ]] && continue
+  # skip the examples in the project repo
+  [[ "$f" == ./examples/* ]] && continue
+  source "$f"
+done
+
+
+setcolor
+
+
+alice() {
+  ## This is a simple function that can be invoked. 
+  ## Comments that starts with `##` are shown in the script usage (./shMakefile --help) 
+  ## Parameters:  
+  ##    -env **required** the environment to operare, like test or prod
+  ##    -name your name
+  mustVar env
   
+  # Everythingwith the form `--<key>=value` is passed as a named variable 
+  echo "DIOOOOO alice ${env} ${name}"
 }
 
-function install() {    
-    # shellcheck disable=SC2154
-    echo "running install() - ${parameter} rulez!"
+bob() {
+  mustVar env
+  echo "bob ${env}"
 }
 
+###################################################
+# Invoke the target - do not edit after this line #
+###################################################
+
+_show-help() {
+  ## Print the script usage documentation
+  ## !!! hidden functions (that starts with `_` ) do not compare in the usage doc!  !!!
+  
+  echo "Usage: $(basename "$0") <command> [--var=value ...]"
+  echo ""
+  awk '
+    /^[[:alpha:]][[:alnum:]_-]*\(\)/ {
+      if (fname != "") { names[++n] = fname; descs[fname] = desc }
+      fname = $0; gsub(/\(\).*/, "", fname)
+      if (fname ~ /^_/) { fname = ""; desc = ""; next }
+      desc = ""; next
+    }
+    fname && /^[[:space:]]*##($|[^#])/ {
+      line = $0; gsub(/^[[:space:]]*##[[:space:]]?/, "", line)
+      desc = desc line "\n"; next
+    }
+    END {
+      if (fname != "") { names[++n] = fname; descs[fname] = desc }
+      print "Available functions:"
+      for (i = 1; i <= n; i++) print "- " names[i]
+      print "***********"
+      for (i = 1; i <= n; i++) {
+        printf "\033[33m%s\033[0m\n", names[i]
+        if (descs[names[i]] != "") printf "%s", descs[names[i]]
+        print ""
+      }
+    }
+  ' "$0"
+}
+
+# Parse arguments.
+# The first argument is the target to invoke, , then it expects variables
+TARGET=$1
+shift || true
+
+if [[ -z "$TARGET" || "$TARGET" == "-h" || "$TARGET" == "--help" ]]; then
+  _show-help
+  exit 0
+fi
+
+while [[ $# -gt 0 ]]; do
+  v=$1
+  shift
+  if [[ $v == --* ]]; then
+    key=$(echo "$v" | awk -F= '{print $1}' | sed 's/-//g')
+    value=$(echo "$v" | awk -F= '{print $2}')
+
+    eval "${key}=${value}"
+  fi
+done
+
+eval "${TARGET}"
