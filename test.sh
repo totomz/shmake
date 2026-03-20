@@ -92,8 +92,8 @@ assert_exit "exits 124 when value not in allowed list" 124 bash -c 'source ./fun
 echo ""
 echo "=== shMakefile: argument parsing ==="
 
-assert_eq  "alice with --env"          "DIOOOOO alice prod " "$($SHMAKE alice --env=prod)"
-assert_eq  "alice with --env and --name" "DIOOOOO alice prod mario" "$($SHMAKE alice --env=prod --name=mario)"
+assert_eq  "alice with --env"          "alice prod " "$($SHMAKE alice --env=prod)"
+assert_eq  "alice with --env and --name" "alice prod mario" "$($SHMAKE alice --env=prod --name=mario)"
 assert_eq  "bob with --env"            "bob staging"          "$($SHMAKE bob --env=staging)"
 
 assert_exit "missing required var exits 123" 123 $SHMAKE alice
@@ -106,7 +106,6 @@ help_out=$($SHMAKE --help 2>&1 || true)
 assert_contains     "--help shows Usage line"      "Usage:"     "$help_out"
 assert_contains     "--help lists alice"           "alice"      "$help_out"
 assert_contains     "--help lists bob"             "bob"        "$help_out"
-assert_contains     "Fake Test"           "xxx"        "$help_out"
 assert_not_contains "--help hides _show-help"      "_show-help" "$help_out"
 
 # ---------------------------------------------------------------------------
