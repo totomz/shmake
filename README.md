@@ -21,6 +21,13 @@ Then, the output of `shmake build --parameter=shmake --key2=World` is
 
 `shMakefile` are just plain bash script; it is possible to use `source` to load scripts from a different path (see `examples/inner/shMakefile`)
 
+
+
+## Function Documentation
+`./shMakefile --help` print a description for each non-private function (function name does not start with `_`)
+
+Each function documentation is made of any line that starts with `## ` within its body  
+
 # Install
 Simply, put `shmake` in your $PATH, eg 
 ```shell
@@ -30,9 +37,8 @@ chmod +x ~/bin/shmake
 
 
 # Builtin functions
-These functions can be used in the target
-```shell
+The scrip `functions.sh` contains general utilities function to interact with kubectl and git, and 
+generic functions for logging.
 
-gitVersion=$()
+The script `tests.sh` test the system
 
-```
