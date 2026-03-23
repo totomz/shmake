@@ -4,6 +4,7 @@ set -e
 
 # utilities functions, keep as first import
 source ./functions.sh
+source ./shMakefile.sh
 
 # Each service defines its own build/deploy functions in a local shMakefile.
 # Sourcing them here makes those functions available as targets in this root shMakefile,
@@ -19,31 +20,51 @@ for f in ./**/shMakefile; do
   source "$f"
 done
 
-
-setcolor
-
-
-alice() {
-  ## This is a simple function that can be invoked. 
-  ## Comments that starts with `##` are shown in the script usage (./shMakefile --help) 
-  ## Parameters:  
-  ##    -env **required** the environment to operare, like test or prod
-  ##    -name your name
-  mustVar env
-  local name="${name:-}"    # optional, default empty  
-  
-  # Everything with the form `--<key>=value` is passed as a named variable 
-  echo "alice ${env} ${name}"
-}
-
-bob() {
-  mustVar env
-  echo "bob ${env}"
-}
-
 ###################################################
 # Invoke the target - do not edit after this line #
 ###################################################
+check-updates() {
+  ## Check for updates from GitHub main. If updates are found, prompts to overwrite local files.
+  ## Silently skips if curl is missing. Exits 3 if updates are available.
+
+  if ! command -v curl &>/dev/null; then
+    errorLog "check-update error: missing tool curl"    
+    return 0
+  fi
+
+  if ! command -v diff &>/dev/null; then
+    errorLog "check-update error: missing tool diff"
+    return 0
+  fi
+  
+  local SCRIPT_DIR=""
+  SCRIPT_DIR=$(dirname "$(realpath "${BASH_SOURCE[0]}")")
+  
+  local doUpdate=false
+  local tmp 
+  tmp=$(mktemp)
+  for file in shMakefile functions.sh; do
+    if curl -sf "https://raw.githubusercontent.com/totomz/shmake/main/${file}" -o "$tmp"; then
+      if ! diff -w -q "$tmp" "${SCRIPT_DIR}/${file}" &>/dev/null; then
+        echo "${file} - new version available."
+        doUpdate=true
+        break
+      else 
+        echo "${file} - no update."
+      fi
+    fi
+  done
+  rm -f "$tmp"
+  
+  if [[ "$doUpdate" == true ]]; then
+    read -r -p "Apply updates? [y/N] " _answer
+    if [[ "$_answer" =~ ^[Yy]$ ]]; then
+      curl -sf "https://raw.githubusercontent.com/totomz/shmake/main/shMakefile" -o "${SCRIPT_DIR}"/shMakefile
+      curl -sf "https://raw.githubusercontent.com/totomz/shmake/main/functions.sh" -o "${SCRIPT_DIR}"/functions.sh
+    fi
+  fi
+
+}
 
 _show-help() {
   ## Print the script usage documentation
@@ -73,7 +94,7 @@ _show-help() {
         print ""
       }
     }
-  ' "$0"
+  ' "$0" "$(dirname "$0")/shMakefile.sh"
 }
 
 # Parse arguments.

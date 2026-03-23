@@ -42,3 +42,6 @@ generic functions for logging.
 
 The script `tests.sh` test the system
 
+# Versioning / Stability
+We are using this file with this structure since several years, no breaking changes are expected.
+Just keep keep you changes between the boundaries should be safe 
