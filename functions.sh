@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 ####################
 # Common functions #
 ####################
@@ -48,7 +49,7 @@ log() {
   _stack=$(caller)
   callerScript=$(echo "${_stack}" | awk -F " " '{print $2}')
   callerLine=$(echo "${_stack}" | awk -F " " '{print $1}')
-  callerfile=$(basename ${callerScript})
+  callerfile=$(basename "${callerScript}")
   echo -e "${CYAN}${callerfile}:${callerLine} $(date +%FT%T)${NOCOLOR} | $*"
 }
 

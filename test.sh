@@ -69,6 +69,10 @@ assert_not_contains() {
 #
 
 # ---------------------------------------------------------------------------
+echo "=== shellcheck ==="
+assert_exit "shellcheck" 0 shellcheck -x functions.sh shMakefile
+
+# ---------------------------------------------------------------------------
 echo "=== functions.sh: increment_semver ==="
 
 source ./functions.sh

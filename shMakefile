@@ -15,6 +15,7 @@ for f in ./**/shMakefile; do
   [[ "$f" == "./shMakefile" ]] && continue
   # skip the examples in the project repo
   [[ "$f" == ./examples/* ]] && continue
+  # shellcheck source=/dev/null
   source "$f"
 done
 
@@ -29,6 +30,7 @@ alice() {
   ##    -env **required** the environment to operare, like test or prod
   ##    -name your name
   mustVar env
+  local name="${name:-}"    # optional, default empty  
   
   # Everything with the form `--<key>=value` is passed as a named variable 
   echo "alice ${env} ${name}"
