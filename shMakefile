@@ -4,7 +4,6 @@ set -e
 
 # utilities functions, keep as first import
 source ./functions.sh
-source ./shMakefile.sh
 
 # Each service defines its own build/deploy functions in a local shMakefile.
 # Sourcing them here makes those functions available as targets in this root shMakefile,
@@ -19,14 +18,37 @@ for f in ./**/shMakefile; do
   # shellcheck source=/dev/null
   source "$f"
 done
+# --. KEEP ME!
+###################################################
+# Scripts Setup - do not edit before this line    #
+###################################################
+# -- start safe edit zone #
 
+alice() {
+  ## alice is an helper function we use for tests
+  ## safe to remove, it is being used only by the tests
+  mustVar env  
+  local name="${name:-}"        # optional, default empty 
+  echo "alice ${env} ${name}"
+}
+
+bob() {    
+  ## bob is an helper function we use for tests
+  ## safe to remove, it is being used only by the tests
+  echo "bob ${env}"
+}
+
+# -- end safe edit zone #
 ###################################################
 # Invoke the target - do not edit after this line #
 ###################################################
+# KEEP ME ==
 check-updates() {
   ## Check for updates from GitHub main. If updates are found, prompts to overwrite local files.
   ## Silently skips if curl is missing. Exits 3 if updates are available.
-
+  local repo
+  repo="https://raw.githubusercontent.com/totomz/shmake/main"
+  
   if ! command -v curl &>/dev/null; then
     errorLog "check-update error: missing tool curl"    
     return 0
@@ -39,31 +61,63 @@ check-updates() {
   
   local SCRIPT_DIR=""
   SCRIPT_DIR=$(dirname "$(realpath "${BASH_SOURCE[0]}")")
-  
-  local doUpdate=false
-  local tmp 
-  tmp=$(mktemp)
-  for file in shMakefile functions.sh; do
-    if curl -sf "https://raw.githubusercontent.com/totomz/shmake/main/${file}" -o "$tmp"; then
-      if ! diff -w -q "$tmp" "${SCRIPT_DIR}/${file}" &>/dev/null; then
-        echo "${file} - new version available."
-        doUpdate=true
-        break
-      else 
-        echo "${file} - no update."
+
+  local remote_tmp work_dir
+  remote_tmp=$(mktemp)
+  work_dir=$(mktemp -d)
+
+  # Download the remote shMakefile
+  curl -sf "${repo}/shMakefile" -o "$remote_tmp"
+
+  _split_file() {
+    local file=$1 prefix=$2
+    local top_end bottom_start
+    top_end=$(grep -m1 -Fn "# --. KEEP ME" "${file}" | cut -d: -f1)
+    bottom_start=$(grep -m1 -Fn "# KEEP ME ==" "${file}" | cut -d: -f1)
+    head -n "${top_end}" "${file}" > "${work_dir}/${prefix}_top"
+    tail -n +"${bottom_start}" "${file}" > "${work_dir}/${prefix}_bottom"
+    sed -n "$((top_end + 1)),$((bottom_start - 1))p" "${file}" > "${work_dir}/${prefix}_middle"
+  }
+
+  _split_file "${SCRIPT_DIR}/shMakefile" "_local"
+  _split_file "$remote_tmp" "_remote"
+  rm -f "$remote_tmp"
+
+  local functions_tmp
+  functions_tmp=$(mktemp)
+  if curl -sf "${repo}/functions.sh" -o "$functions_tmp"; then
+    if ! diff -w -q "$functions_tmp" "${SCRIPT_DIR}/functions.sh" &>/dev/null; then
+      echo "New functions.sh version found."
+      read -r -p "Apply updates to functions.sh? [y/N] " _answer
+      if [[ "$_answer" =~ ^[Yy]$ ]]; then
+        mv "$functions_tmp" "${SCRIPT_DIR}/functions.sh"
       fi
     fi
-  done
-  rm -f "$tmp"
-  
-  if [[ "$doUpdate" == true ]]; then
-    read -r -p "Apply updates? [y/N] " _answer
+  fi
+  rm -f "$functions_tmp"
+
+  local has_diff=false
+  if ! diff -w -q "${work_dir}/_local_top" "${work_dir}/_remote_top" &>/dev/null; then
+    has_diff=true
+  fi
+  if ! diff -w -q "${work_dir}/_local_bottom" "${work_dir}/_remote_bottom" &>/dev/null; then
+    has_diff=true
+  fi
+
+  if [[ "$has_diff" == true ]]; then
+    echo "New shMakefile version found."
+    read -r -p "Apply updates to shMakefile? [y/N] " _answer
     if [[ "$_answer" =~ ^[Yy]$ ]]; then
-      curl -sf "https://raw.githubusercontent.com/totomz/shmake/main/shMakefile" -o "${SCRIPT_DIR}"/shMakefile
-      curl -sf "https://raw.githubusercontent.com/totomz/shmake/main/functions.sh" -o "${SCRIPT_DIR}"/functions.sh
+      # Bash reads scripts in buffered chunks, not all at once.
+      # If the script file is overwritten while running, bash may read
+      # a mix of old and new content — with unpredictable results.
+      # To be safe, put the overwrite command and `exit` on the same line:
+      # bash parses the full line before executing any of it.
+      cat "${work_dir}/_remote_top" "${work_dir}/_local_middle" "${work_dir}/_remote_bottom" > "${SCRIPT_DIR}/shMakefile" && rm -rf "$work_dir" ; exit 0
     fi
   fi
 
+  rm -rf "$work_dir"
 }
 
 _show-help() {
@@ -94,7 +148,7 @@ _show-help() {
         print ""
       }
     }
-  ' "$0" "$(dirname "$0")/shMakefile.sh"
+  ' "$0"
 }
 
 # Parse arguments.
