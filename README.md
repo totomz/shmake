@@ -1,49 +1,107 @@
 # shmake
 [![test](https://github.com/totomz/shmake/actions/workflows/test.yml/badge.svg)](https://github.com/totomz/shmake/actions/workflows/test.yml)
 
-Build tool in plain sh
-`shmake` is a simple script to execute build scripts in bash. 
+Run bash functions as build targets — no Makefile, no NodeJS, just shell.
 
-# How to use
-`shMake` is "similar" to GNU Make: it executes a "target" function defined in an `shMakefile`.
+`shMakefile` give you a simple framework to invoke bash function with arguments, with ready-to-use functions to simplify the test/build/deploy cycle
 
-Given this `shMakefile`
+**WARNING** this is a totally and highly opinionated way to organize the build & CI/CD pipeline, based on my experience.  
+It works for me, it could not work for you!
+
+Invoke a build command with an argument
 ```shell
-function install() {    
-    echo "running npm install with ${parameter}"
+./shMakefile build --env=prod
+```
+
+## Installation
+This "tool" is made of 2 scripts: 
+* `shMakefile` the main executable script that is invoked;
+* `functions.sh` a collections of utilities functions
+
+Just download these scripts in your repo, and you're ready.
+
+one-liner with curl
+```shell
+curl -fsSL https://raw.githubusercontent.com/totomz/shmake/refs/heads/main/install.sh | sh
+```
+or with wget:
+```shell
+wget -qO- https://raw.githubusercontent.com/totomz/shmake/refs/heads/main/install.sh | sh
+```
+
+## Usage 
+I have 2 founding ideas:
+
+- A codebase should be built ina local environment or in a CI/CD pipeline with exactly the same commands;
+- At the end, in most priojects, build&deploy is mainly gluing together some cli tool; 
+
+The goal is to have the build/deploy logic in isolated, invocable bash functions.  
+
+These are 2 simple functions that test and build a monorepo with multiple golang services 
+```shell
+build() {    
+  mustVar service               # required argument
+  local arch="${arch:-amd64}"   # optional argument, default "amd64" 
+  
+  # good engineers test their stuff before compile
+  run-test
+  time GOOS=linux GOARCH="${arch}" go build -o bin/daje app/main.go
+  
 }
 
-function build() {
-  install # run install before
-  echo "Hello ${key2}!"
+run-test() {
+  mustVar service
+  # test the common package
+  go vet ./common/...
+  go test ./common/...  
+  
+  # test the service
+  go vet ./services/${service}/...
+  go test -timeout 180s -count=1 --parallel=6 ./services/${service}/
 }
 ```
 
-Then, the output of `shmake build --parameter=shmake --key2=World` is  
-
-`shMakefile` are just plain bash script; it is possible to use `source` to load scripts from a different path (see `examples/inner/shMakefile`)
-
-
-
-## Function Documentation
-`./shMakefile --help` print a description for each non-private function (function name does not start with `_`)
-
-Each function documentation is made of any line that starts with `## ` within its body  
-
-# Install
-Simply, put `shmake` in your $PATH, eg 
+Need to run the tests?
 ```shell
-curl -o ~/bin/shmake "https://raw.githubusercontent.com/totomz/shmake/main/shmake"
-chmod +x ~/bin/shmake
+
+$ ./shMakefile run-test --service=myservice
 ```
 
+Or build?
+```shell
+# build for the default architecture
+$ ./shMakefile build --service=myservice
 
-# Builtin functions
-The scrip `functions.sh` contains general utilities function to interact with kubectl and git, and 
-generic functions for logging.
+# or not
+$ ./shMakefile build --service=myservice --arch=arm64
+```
 
-The script `tests.sh` test the system
+Read the contents of `./shMakefile` for more details about:
+* monorepo support - create children `shMakfeile` with all your functions separated from the main code
+* where to place your custom scripts
+* built-in fucntions (there are like 5 funcitons, it won't take too much time)
 
-# Versioning / Stability
-We are using this file with this structure since several years, no breaking changes are expected.
-Just keep keep you changes between the boundaries should be safe 
+## built-in utilities functions
+
+
+## Examples
+See the `shMakefile` and an example of a sub-service `./services/bob/shMakefile`
+# Faq
+
+## Can I call a function "test"?
+TL;DR: **NO**
+
+Long version:
+Yes, you can. In bash, functions take precedence over external commands (and non-special builtins).
+`test` is not a special builtin (those are: break, continue, eval, exec, exit, export, readonly, return, set, shift, trap, unset),
+so it can be overridden without issues.
+```shell
+test() {
+  echo "hello"
+}
+test  # prints "hello"
+```
+To call the original test from inside the function, use builtin test or command test (or the absolute path /usr/bin/).
+
+**Practical warning**: overriding `test` is a time bomb because `[` is an alias for test! 
+All `if [ ... ]` statements will stop behaving as expected!

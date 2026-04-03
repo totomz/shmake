@@ -2,13 +2,15 @@
 
 set -e
 
-# utilities functions, keep as first import
+# load utilities functions, keep as first import
+# utilities functions are for logging (instead of `echo` call `log`, it prints the line number_
+# or check that `everything-is-committed` before deploy 
 source ./functions.sh
 
-# Each service defines its own build/deploy functions in a local shMakefile.
-# Sourcing them here makes those functions available as targets in this root shMakefile,
-# so you can call e.g. `./shMakefile build-appetizer` from the repo root.
-# But this has a risk: it would source any shMakefile found in subdirectories, including nested ones you might not intend. The explicit list is more predictable and safe.
+# Write your own functions in this file or in separated files. 
+# This script loads any file called `shMakefile` recursively from the current path.
+# Handy in monorepo, where each service has it's own folder. This way it is possible to declare 
+# service-based functions in the same scope of the service (@see the func `turbodeploy` later on).
 shopt -s globstar
 for f in ./**/shMakefile; do
   # skip myself
@@ -23,19 +25,182 @@ done
 # Scripts Setup - do not edit before this line    #
 ###################################################
 # -- start safe edit zone #
+# write here your functions!
+# these are examples that I sue and make sense to me - my stack is AWS + Kubernetes
 
-alice() {
-  ## alice is an helper function we use for tests
-  ## safe to remove, it is being used only by the tests
-  mustVar env  
-  local name="${name:-}"        # optional, default empty 
-  echo "alice ${env} ${name}"
+
+turbodeploy() {
+  ## test, build,push to the registry and deploy a service
+  # (note: comments that starts with `##` are shown in `./shMakefile --help`
+  mustVar env       # the environment to deploy in
+  mustVar service   # the name of the service to deploy
+  
+  h1 "Turbodeploy ${service} --> ${env}"
+  
+  # shMakefile read all the `shMakefile` scripts recursively.
+  # We can then have a build funtion for all the services except some of them, 
+  # we only need to declare a function named like the service `build-<service>` in 
+  # an `shMakefile` down in the path  
+  # ./shMakefile build --service=alice --> invoke build-alice @see ./services/alice/shMakefile    
+  # ./shMakefile build --service=bob --> invoke build-kubeservice     
+  if type -t "build-${service}" &>/dev/null; then
+    "build-${service}"
+  else
+    build-kubeservice
+  fi
+  
+  # push artifacts in their registries 
+  if type -t "push-${service}" &>/dev/null; then
+    "push-${service}"
+  else
+    push-kubeservice
+  fi
+
+  if type -t "deploy-${service}" &>/dev/null; then
+    "deploy-${service}"
+  else
+    deploy-kubeservice
+  fi
 }
 
-bob() {    
-  ## bob is an helper function we use for tests
-  ## safe to remove, it is being used only by the tests
-  echo "bob ${env}"
+build-kubeservice() {
+  ## standard build step
+  mustVar service             # the name of the service to deploy
+  local arch="${name:-arm64}" # target build architecture - default amd64 
+  
+  # jump in the service folder
+  # build all `main.go` that are there
+  pushd "services/${service}" || true
+    shopt -s globstar
+    for main in app/**/main.go; do
+      name=$(basename "$(dirname "$main")")
+      log "building main=${main} "
+      
+      CGO_ENABLED=0 GOOS="linux" GOARCH="${arch}" go build -o "bin/${name}_linux_amd64" "./$main"
+      CGO_ENABLED=0 GOOS="linux" GOARCH="${arch}" go build -o "bin/${name}_linux_arm64" "./$main"
+    done
+
+  popd || true
+}
+
+push-kubeservice() {
+  ## Push the service artifacts in the service registry
+  ## This function assume
+  ## - there is an helm chart with the same name of the service
+  ## - there is a container image to build
+  ## - chart and container are pushed to an AWS ECR registry
+  ## Invoke this function with a proper AWS_PROFILE env set!   
+  mustVar env
+  mustVar service
+
+  gitCommit=$(gitver)
+  gitBranch=$(git rev-parse --abbrev-ref HEAD | awk -F'/' '{print $NF}')
+  r=${RANDOM} # add a random suffix to allow rebuild of images
+  
+  h1 "PUSHING service=${service} env=${env} git=${gitCommit}"
+
+  local image_name="${service}"
+  local chart_name="${service}"
+  local image_tag="1.2_${gitCommit}-${r}"
+
+  awsAccountId=$( aws sts get-caller-identity --query Account --output text )
+  log "AWS account ${awsAccountId}"
+
+  # get the latest pushed chart
+  latestChart=$(
+    aws ecr describe-images \
+      --region eu-west-1 \
+      --repository-name "${chart_name}" \
+      --query='sort_by(imageDetails[?artifactMediaType==`application/vnd.cncf.helm.config.v1+json`], &imagePushedAt)[-1].imageTags[0]' \
+      --output text
+  )
+  [ "$latestChart" = "None" ] && latestChart="1.0.0"
+
+  chart_tag=$(increment_semver "${latestChart}")
+  #chart_tag="1.1.0" #<-- useme for migration to the new reposiroties
+  aws ecr get-login-password \
+     --region eu-west-1 | helm registry login \
+     --username AWS \
+     --password-stdin ${awsAccountId}.dkr.ecr.eu-west-1.amazonaws.com
+
+  aws ecr get-login-password \
+    --region eu-west-1 | docker login \
+    --username AWS \
+    --password-stdin ${awsAccountId}.dkr.ecr.eu-west-1.amazonaws.com
+
+  pushd "services/${service}" || exit
+
+  log "Building & Pushing image image=${image_name}:${image_tag}"
+  docker buildx build \
+    --build-arg "ENV=${env}" \
+    --platform=linux/arm64 \
+    --push \
+    -t "${awsAccountId}.dkr.ecr.eu-west-1.amazonaws.com/${image_name}:${image_tag}" .
+  
+  log "Pushing chart=${chart_name}:${chart_tag}"
+  rm "${service}/Chart.yaml" || true
+  rm "${service}/Chart.yamlbak" || true
+  rm "${service}/values.yaml" || true
+
+  echo "chart_name=${chart_name} chart_tag=${chart_tag} image_tag=${image_tag}"
+  sed "s/#/${chart_tag}/" "${service}/Chart.yamltpl" > "${service}/Chart.yaml"  
+  sed -ibak "s/@/${image_tag}/" "${service}/Chart.yaml"
+  sed "s/@/${image_tag}/" "${service}/values.yamltpl" > "${service}/values.yaml"
+
+  helm package ${service}
+  helm push ${chart_name}-${chart_tag}.tgz oci://${awsAccountId}.dkr.ecr.eu-west-1.amazonaws.com
+  rm ${chart_name}-${chart_tag}.tgz || true
+  log "chart pushed"
+  
+  popd || true
+
+}
+
+deploy-kubeservice() {
+  ## Push the service artifacts in the service registry
+  ## This function assume
+  ## - there is an helm chart with the same name of the service;
+  ## - there is a container image to build;
+  ## - chart and container are pushed to an AWS ECR registry;
+  ## - teh deployment is managed with Terraform;
+  ##
+  ## Invoke this function with a proper AWS_PROFILE env set! 
+  mustVar env
+  mustVar service
+  h1 "DEPLOYING service=${service} env=${env}"
+
+  if type -t "deploy-${service}" &>/dev/null; then
+    "deploy-${service}"
+    return $?
+  fi
+  
+  notify_deploy ${service} ${env}
+
+  awsAccountId=$( aws sts get-caller-identity --query Account --output text )
+  log "AWS account ${awsAccountId}"
+  aws ecr get-login-password \
+     --region eu-west-1 | helm registry login \
+     --username AWS \
+     --password-stdin ${awsAccountId}.dkr.ecr.eu-west-1.amazonaws.com
+
+  autoapprove=""
+  if [ "${GITHUB_ACTIONS}" == "true" ]; then
+    autoapprove="-auto-approve"
+  fi
+
+  pushd services/${service}/stack/${env}/deployment || exit  
+    terraform init
+    terraform apply ${autoapprove}
+  popd || exit  
+}
+
+
+
+test-kubeservice() {
+    mustVar service
+    h1 "TESTING service=${service}"
+    go vet ./services/${service}/...
+    go test -timeout 180s -count=1 --parallel=6 ./services/${service}/
 }
 
 # -- end safe edit zone #
@@ -121,30 +286,53 @@ check-updates() {
 }
 
 _show-help() {
-  ## Print the script usage documentation
-  ## !!! hidden functions (that starts with `_` ) do not compare in the usage doc!  !!!
+  # Print the script usage documentation
+  # Hidden functions (that starts with `_` ) are also hidden in the doc
+  # (but if you add ## comments, they will show up randomly - it's bash, give me a break)
   
-  echo "Usage: $(basename "$0") <command> [--var=value ...]"
+  echo "Usage: $(basename "$0") <function> [--var=value ...]"
   echo ""
   awk '
     /^[[:alpha:]][[:alnum:]_-]*\(\)/ {
-      if (fname != "") { names[++n] = fname; descs[fname] = desc }
+      if (fname != "") { names[++n] = fname; descs[fname] = desc; fargs[fname] = arglist }
       fname = $0; gsub(/\(\).*/, "", fname)
-      if (fname ~ /^_/) { fname = ""; desc = ""; next }
-      desc = ""; next
+      if (fname ~ /^_/) { fname = ""; desc = ""; arglist = ""; collecting = 0; next }
+      desc = ""; arglist = ""; collecting = 1; next
     }
     fname && /^[[:space:]]*##($|[^#])/ {
       line = $0; gsub(/^[[:space:]]*##[[:space:]]?/, "", line)
       desc = desc line "\n"; next
     }
+    fname && collecting && /^[[:space:]]*mustVar[[:space:]]/ {
+      line = $0
+      varname = line; gsub(/^[[:space:]]*mustVar[[:space:]]+/, "", varname); gsub(/[[:space:]].*/, "", varname)
+      comment = ""
+      if (line ~ /#/) { comment = line; gsub(/^[^#]*#[[:space:]]*/, "", comment) }
+      entry = "  --" varname "=<value>  required"
+      if (comment != "") entry = entry "  " comment
+      arglist = arglist entry "\n"
+      next
+    }
+    fname && collecting && /^[[:space:]]*local[[:space:]]/ {
+      if ($0 !~ /#/) { next }
+      line = $0
+      varname = line; gsub(/^[[:space:]]*local[[:space:]]+/, "", varname); gsub(/[=[:space:]].*/, "", varname)
+      comment = line; gsub(/^[^#]*#[[:space:]]*/, "", comment)
+      arglist = arglist "  --" varname "=<value>  optional  " comment "\n"
+      next
+    }
+    fname && collecting && /^[[:space:]]*$/ { next }
+    fname && collecting { collecting = 0 }
     END {
-      if (fname != "") { names[++n] = fname; descs[fname] = desc }
-      print "Available functions:"
-      for (i = 1; i <= n; i++) print "- " names[i]
-      print "***********"
+      if (fname != "") { names[++n] = fname; descs[fname] = desc; fargs[fname] = arglist }
+      flist = ""
+      for (i = 1; i <= n; i++) flist = flist (i > 1 ? " | " : "") names[i]
+      print "Functions: " flist
+      print ""
       for (i = 1; i <= n; i++) {
-        printf "\033[33m%s\033[0m\n", names[i]
+        printf "### %s\n", names[i]
         if (descs[names[i]] != "") printf "%s", descs[names[i]]
+        if (fargs[names[i]] != "") printf "%s", fargs[names[i]]
         print ""
       }
     }

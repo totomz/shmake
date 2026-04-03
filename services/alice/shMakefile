@@ -1,0 +1,22 @@
+build-alice() {
+  ## custom script to build the fake service alice
+  echo "alice is building!"
+}
+
+push-alice() {
+  ## custom script to build the fake service alice
+  echo "alice is pushing!"
+}
+
+deploy-alice() {
+  ## custom script to build the fake service alice
+  echo "lol. joking, it's a test!"
+}
+
+alice() {
+  ## test function
+  mustVar env
+  local name="${name:-}"
+  
+  echo "alice ${env} ${name}"
+}

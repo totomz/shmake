@@ -98,9 +98,38 @@ echo "=== shMakefile: argument parsing ==="
 
 assert_eq  "alice with --env"          "alice prod " "$($SHMAKE alice --env=prod)"
 assert_eq  "alice with --env and --name" "alice prod mario" "$($SHMAKE alice --env=prod --name=mario)"
-assert_eq  "bob with --env"            "bob staging"          "$($SHMAKE bob --env=staging)"
 
 assert_exit "missing required var exits 123" 123 $SHMAKE alice
+
+# ---------------------------------------------------------------------------
+echo ""
+echo "=== shMakefile: submodule functions ==="
+
+assert_eq "build-alice outputs expected message" "alice is building!" "$($SHMAKE build-alice)"
+
+turbodeploy_out=$($SHMAKE turbodeploy --service=alice --env=whatever 2>&1)
+assert_contains "turbodeploy: banner contains service and env" "Turbodeploy alice --> whatever" "$turbodeploy_out"
+assert_contains "turbodeploy: alice is building"               "alice is building!"             "$turbodeploy_out"
+assert_contains "turbodeploy: alice is pushing"                "alice is pushing!"              "$turbodeploy_out"
+assert_contains "turbodeploy: final message"                   "lol. joking, it's a test!"     "$turbodeploy_out"
+
+# ---------------------------------------------------------------------------
+echo ""
+echo "=== shMakefile: build-kubeservice ==="
+
+rm -rf ./services/bob/bin
+
+$SHMAKE build-kubeservice --service=bob &>/dev/null
+assert_exit "build-kubeservice: alpha arm64 exists" 0 test -f ./services/bob/bin/alpha_linux_arm64
+assert_exit "build-kubeservice: beta arm64 exists"  0 test -f ./services/bob/bin/beta_linux_arm64
+
+rm -rf ./services/bob/bin
+
+$SHMAKE build-kubeservice --service=bob &>/dev/null
+assert_exit "build-kubeservice: alpha amd64 exists" 0 test -f ./services/bob/bin/alpha_linux_amd64
+assert_exit "build-kubeservice: beta amd64 exists"  0 test -f ./services/bob/bin/beta_linux_amd64
+
+rm -rf ./services/bob/bin
 
 # ---------------------------------------------------------------------------
 echo ""
