@@ -3,105 +3,104 @@
 
 Run bash functions as build targets — no Makefile, no NodeJS, just shell.
 
-`shMakefile` give you a simple framework to invoke bash function with arguments, with ready-to-use functions to simplify the test/build/deploy cycle
+`shMakefile` gives you a simple framework to invoke bash functions with arguments, providing ready-to-use functions to simplify your test, build, and deploy cycle.
 
-**WARNING** this is a totally and highly opinionated way to organize the build & CI/CD pipeline, based on my experience.  
-It works for me, it could not work for you!
+**WARNING:** This is a highly opinionated way to organize build and CI/CD pipelines, based on my personal experience. It works for me, but it might not work for you!
 
-Invoke a build command with an argument
+Invoke a build command with an argument:
 ```shell
 ./shMakefile build --env=prod
 ```
 
 ## Installation
-This "tool" is made of 2 scripts: 
-* `shMakefile` the main executable script that is invoked;
-* `functions.sh` a collections of utilities functions
+This tool consists of two scripts:
+* `shMakefile`: The main executable script.
+* `functions.sh`: A collection of utility functions.
 
-Just download these scripts in your repo, and you're ready.
+Just download these scripts into your repo, and you are ready to go.
 
-one-liner with curl
+One-liner with curl:
 ```shell
 curl -fsSL https://raw.githubusercontent.com/totomz/shmake/refs/heads/main/install.sh | sh
 ```
-or with wget:
+
+Or with wget:
 ```shell
 wget -qO- https://raw.githubusercontent.com/totomz/shmake/refs/heads/main/install.sh | sh
 ```
 
-## Usage 
-I have 2 founding ideas:
+## Usage
+Design principles:
 
-- A codebase should be built ina local environment or in a CI/CD pipeline with exactly the same commands;
-- At the end, in most priojects, build&deploy is mainly gluing together some cli tool; 
+1. A codebase should be built in a local environment and a CI/CD pipeline using exactly the same commands;
+2. Most build and deploy processes are essentially about gluing various CLI tools together;
 
-The goal is to have the build/deploy logic in isolated, invocable bash functions.  
+The goal is to keep build/deploy logic in isolated, invocable bash functions.
 
-These are 2 simple functions that test and build a monorepo with multiple golang services 
+Here are two simple functions that test and build a monorepo with multiple Go services:
 ```shell
-build() {    
+build() {
   mustVar service               # required argument
-  local arch="${arch:-amd64}"   # optional argument, default "amd64" 
-  
-  # good engineers test their stuff before compile
+  local arch="${arch:-amd64}"   # optional argument, default "amd64"
+
+  # Good engineers test their code before compiling
   run-test
   time GOOS=linux GOARCH="${arch}" go build -o bin/daje app/main.go
-  
 }
 
 run-test() {
   mustVar service
-  # test the common package
+  # Test the common package
   go vet ./common/...
-  go test ./common/...  
-  
-  # test the service
+  go test ./common/...
+
+  # Test the service
   go vet ./services/${service}/...
   go test -timeout 180s -count=1 --parallel=6 ./services/${service}/
 }
 ```
 
-Need to run the tests?
+**Need to run the tests?**
 ```shell
-
 $ ./shMakefile run-test --service=myservice
 ```
 
-Or build?
+**Or build?**
 ```shell
-# build for the default architecture
+# Build for the default architecture
 $ ./shMakefile build --service=myservice
 
-# or not
+# Build for a specific architecture
 $ ./shMakefile build --service=myservice --arch=arm64
 ```
 
 Read the contents of `./shMakefile` for more details about:
-* monorepo support - create children `shMakfeile` with all your functions separated from the main code
-* where to place your custom scripts
-* built-in fucntions (there are like 5 funcitons, it won't take too much time)
+* **Monorepo support**: Create child `shMakefile` files to separate functions from your main code.
+* **Custom scripts**: Where to place your custom logic.
+* **Built-in functions**: A small set of utilities to simplify your workflow.
 
-## built-in utilities functions
-
+## Built-in Utility Functions
+*(List your functions here)*
 
 ## Examples
-See the `shMakefile` and an example of a sub-service `./services/bob/shMakefile`
-# Faq
+See the `shMakefile` and an example of a sub-service `./services/bob/shMakefile`.
+
+# FAQ
 
 ## Can I call a function "test"?
-TL;DR: **NO**
+**TL;DR: NO**
 
-Long version:
-Yes, you can. In bash, functions take precedence over external commands (and non-special builtins).
-`test` is not a special builtin (those are: break, continue, eval, exec, exit, export, readonly, return, set, shift, trap, unset),
-so it can be overridden without issues.
+**Long version:**
+Technically, yes. In bash, functions take precedence over external commands and non-special builtins. `test` is not a special builtin (those are: `break`, `continue`, `eval`, `exec`, `exit`, `export`, `readonly`,
+`return`, `set`, `shift`, `trap`, `unset`), so it can be overridden.
+
 ```shell
 test() {
   echo "hello"
 }
 test  # prints "hello"
 ```
-To call the original test from inside the function, use builtin test or command test (or the absolute path /usr/bin/).
 
-**Practical warning**: overriding `test` is a time bomb because `[` is an alias for test! 
-All `if [ ... ]` statements will stop behaving as expected!
+However, overriding `test` is a "time bomb" because the `[` command is an alias for `test`. If you override `test`, all `if [ ... ]` statements in your scripts will stop behaving as expected!
+
+To call the original `test` from inside your function, use the `builtin` command: `builtin test ...`.

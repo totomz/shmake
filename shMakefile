@@ -2,14 +2,14 @@
 
 set -e
 
-# load utilities functions, keep as first import
-# utilities functions are for logging (instead of `echo` call `log`, it prints the line number_
+# load utility functions, keep as first import
+# utilities functions are for logging (instead of using `echo`, call `log`, it prints the line number)
 # or check that `everything-is-committed` before deploy 
 source ./functions.sh
 
-# Write your own functions in this file or in separated files. 
+# Write your own functions in this file or in separate files. 
 # This script loads any file called `shMakefile` recursively from the current path.
-# Handy in monorepo, where each service has it's own folder. This way it is possible to declare 
+# Handy in a monorepo, where each service has its own folder. This way it is possible to declare 
 # service-based functions in the same scope of the service (@see the func `turbodeploy` later on).
 shopt -s globstar
 for f in ./**/shMakefile; do
@@ -26,12 +26,15 @@ done
 ###################################################
 # -- start safe edit zone #
 # write here your functions!
-# these are examples that I sue and make sense to me - my stack is AWS + Kubernetes
+# these are examples that I use and make sense to me - my stack is AWS + Kubernetes
+# (note: comments that starts with `##` are shown in `./shMakefile --help`)
+
 
 
 turbodeploy() {
-  # (note: comments that starts with `##` are shown in `./shMakefile --help`
   ## test, build,push to the registry and deploy a service
+  local env="${env:-}"          # <-- this is only required to pass shellcheck, can be omitted
+  local service="${service:-}"  # <-- this is only required to pass shellcheck, can be omitted
   mustVar env       # the environment to deploy in
   mustVar service   # the name of the service to deploy
   
@@ -39,7 +42,7 @@ turbodeploy() {
   h1 "Turbodeploy ${service} --> ${env}"
   
   # shMakefile read all the `shMakefile` scripts recursively.
-  # We can then have a build funtion for all the services except some of them, 
+  # We can then have a build function for all the services except some of them, 
   # we only need to declare a function named like the service `build-<service>` in 
   # an `shMakefile` down in the path  
   # ./shMakefile build --service=alice --> invoke build-alice @see ./services/alice/shMakefile    
@@ -67,7 +70,8 @@ turbodeploy() {
 build-kubeservice() {
   ## standard build step
   mustVar service             # the name of the service to deploy
-  local arch="${name:-arm64}" # target build architecture - default amd64 
+  local arch="${arch:-arm64}" # target build architecture - default arm64 
+  local os="${os:-linux}"   # target build os - default linux 
   
   # jump in the service folder
   # build all `main.go` that are there
@@ -77,8 +81,7 @@ build-kubeservice() {
       name=$(basename "$(dirname "$main")")
       log "building main=${main} "
       
-      CGO_ENABLED=0 GOOS="linux" GOARCH="${arch}" go build -o "bin/${name}_linux_amd64" "./$main"
-      CGO_ENABLED=0 GOOS="linux" GOARCH="${arch}" go build -o "bin/${name}_linux_arm64" "./$main"
+      CGO_ENABLED=0 GOOS="${os}" GOARCH="${arch}" go build -o "bin/${name}_${os}_${arch}" "./$main"      
     done
 
   popd || true
@@ -86,8 +89,8 @@ build-kubeservice() {
 
 push-kubeservice() {
   ## Push the service artifacts in the service registry
-  ## This function assume
-  ## - there is an helm chart with the same name of the service
+  ## This function assumes
+  ## - there is an helm chart with the same name as the service
   ## - there is a container image to build
   ## - chart and container are pushed to an AWS ECR registry
   ## Invoke this function with a proper AWS_PROFILE env set!   
@@ -108,7 +111,7 @@ push-kubeservice() {
 
   # get the latest pushed chart
   # shellcheck disable=SC2016 
-  # backticks are for the cli, nothing to exmpd in the query 
+  # backticks are for the cli, nothing to expand in the query 
   latestChart=$(
     aws ecr describe-images \
       --region eu-west-1 \
@@ -119,7 +122,7 @@ push-kubeservice() {
   [ "$latestChart" = "None" ] && latestChart="1.0.0"
 
   chart_tag=$(increment_semver "${latestChart}")
-  #chart_tag="1.1.0" #<-- useme for migration to the new reposiroties
+  #chart_tag="1.1.0" #<-- useme for migration to the new repositories
   aws ecr get-login-password \
      --region eu-west-1 | helm registry login \
      --username AWS \
@@ -159,12 +162,12 @@ push-kubeservice() {
 }
 
 deploy-kubeservice() {
-  ## Push the service artifacts in the service registry
-  ## This function assume
+  ## Deploy the service artifacts in the service registry
+  ## This function assumes
   ## - there is an helm chart with the same name of the service;
   ## - there is a container image to build;
   ## - chart and container are pushed to an AWS ECR registry;
-  ## - teh deployment is managed with Terraform;
+  ## - the deployment is managed with Terraform;
   ##
   ## Invoke this function with a proper AWS_PROFILE env set! 
   mustVar env
@@ -190,7 +193,7 @@ deploy-kubeservice() {
 
   pushd "services/${service}/stack/${env}/deployment" || exit  
     terraform init
-    terraform apply ${autoapprove}
+    terraform apply "${autoapprove}"
   popd || exit  
 }
 
@@ -301,10 +304,10 @@ _show-help() {
   done
   awk '
     /^[[:alpha:]][[:alnum:]_-]*\(\)/ {
-      if (fname != "") { names[++n] = fname; descs[fname] = desc; fargs[fname] = arglist }
+      if (fname != "") { names[++n] = fname; descs[fname] = desc }
       fname = $0; gsub(/\(\).*/, "", fname)
-      if (fname ~ /^_/) { fname = ""; desc = ""; arglist = ""; collecting = 0; next }
-      desc = ""; arglist = ""; collecting = 1; next
+      if (fname ~ /^_/) { fname = ""; desc = ""; collecting = 0; next }
+      desc = ""; fargs[fname] = ""; lcount[fname] = 0; collecting = 1; next
     }
     fname && /^[[:space:]]*##($|[^#])/ {
       line = $0; gsub(/^[[:space:]]*##[[:space:]]?/, "", line)
@@ -317,7 +320,8 @@ _show-help() {
       if (line ~ /#/) { comment = line; gsub(/^[^#]*#[[:space:]]*/, "", comment) }
       entry = "  --" varname "=<value>  required"
       if (comment != "") entry = entry "  " comment
-      arglist = arglist entry "\n"
+      req[fname, varname] = 1
+      fargs[fname] = fargs[fname] entry "\n"
       next
     }
     fname && collecting && /^[[:space:]]*local[[:space:]]/ {
@@ -325,21 +329,28 @@ _show-help() {
       line = $0
       varname = line; gsub(/^[[:space:]]*local[[:space:]]+/, "", varname); gsub(/[=[:space:]].*/, "", varname)
       comment = line; gsub(/^[^#]*#[[:space:]]*/, "", comment)
-      arglist = arglist "  --" varname "=<value>  optional  " comment "\n"
+      lcount[fname]++
+      lvar[fname, lcount[fname]] = varname
+      lentry[fname, lcount[fname]] = "  --" varname "=<value>  optional  " comment
       next
     }
     fname && collecting && /^[[:space:]]*$/ { next }
     fname && collecting { collecting = 0 }
     END {
-      if (fname != "") { names[++n] = fname; descs[fname] = desc; fargs[fname] = arglist }
+      if (fname != "") { names[++n] = fname; descs[fname] = desc }
       flist = ""
       for (i = 1; i <= n; i++) flist = flist (i > 1 ? " | " : "") names[i]
       print "Functions: " flist
       print ""
       for (i = 1; i <= n; i++) {
-        printf "### %s\n", names[i]
-        if (descs[names[i]] != "") printf "%s", descs[names[i]]
-        if (fargs[names[i]] != "") printf "%s", fargs[names[i]]
+        f = names[i]
+        printf "### %s\n", f
+        if (descs[f] != "") printf "%s", descs[f]
+        combined = fargs[f]
+        for (j = 1; j <= lcount[f]; j++) {
+          if (!req[f, lvar[f, j]]) combined = combined lentry[f, j] "\n"
+        }
+        if (combined != "") printf "%s", combined
         print ""
       }
     }
@@ -347,7 +358,7 @@ _show-help() {
 }
 
 # Parse arguments.
-# The first argument is the target to invoke, , then it expects variables
+# The first argument is the target to invoke, followed by variables
 TARGET=$1
 shift || true
 
