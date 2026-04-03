@@ -79,11 +79,6 @@ Read the contents of `./shMakefile` for more details about:
 * **Custom scripts**: Where to place your custom logic.
 * **Built-in functions**: A small set of utilities to simplify your workflow.
 
-## Built-in Utility Functions
-*(List your functions here)*
-
-## Examples
-See the `shMakefile` and an example of a sub-service `./services/bob/shMakefile`.
 
 # FAQ
 
