@@ -125,7 +125,7 @@ assert_exit "build-kubeservice: beta arm64 exists"  0 test -f ./services/bob/bin
 
 rm -rf ./services/bob/bin
 
-$SHMAKE build-kubeservice --service=bob &>/dev/null
+$SHMAKE build-kubeservice --service=bob --arch=amd64 &>/dev/null
 assert_exit "build-kubeservice: alpha amd64 exists" 0 test -f ./services/bob/bin/alpha_linux_amd64
 assert_exit "build-kubeservice: beta amd64 exists"  0 test -f ./services/bob/bin/beta_linux_amd64
 
