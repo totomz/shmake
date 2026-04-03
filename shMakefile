@@ -292,6 +292,13 @@ _show-help() {
   
   echo "Usage: $(basename "$0") <function> [--var=value ...]"
   echo ""
+  local _files=("$0")
+  shopt -s globstar
+  for _f in ./**/shMakefile; do
+    [[ "$_f" == "./shMakefile" ]] && continue
+    [[ "$_f" == ./examples/* ]] && continue
+    _files+=("$_f")
+  done
   awk '
     /^[[:alpha:]][[:alnum:]_-]*\(\)/ {
       if (fname != "") { names[++n] = fname; descs[fname] = desc; fargs[fname] = arglist }
@@ -336,7 +343,7 @@ _show-help() {
         print ""
       }
     }
-  ' "$0"
+  ' "${_files[@]}"
 }
 
 # Parse arguments.
