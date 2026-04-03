@@ -1,4 +1,6 @@
 # shmake
+[![test](https://github.com/totomz/shmake/actions/workflows/test.yml/badge.svg)](https://github.com/totomz/shmake/actions/workflows/test.yml)
+
 Build tool in plain sh
 `shmake` is a simple script to execute build scripts in bash. 
 
