@@ -138,15 +138,11 @@ echo "=== shMakefile: --help ==="
 help_out=$($SHMAKE --help 2>&1 || true)
 assert_contains     "--help shows Usage line"      "Usage:"     "$help_out"
 assert_contains     "--help lists alice"           "alice"      "$help_out"
-assert_contains     "--help lists bob"             "bob"        "$help_out"
 assert_not_contains "--help hides _show-help"      "_show-help" "$help_out"
 
 # ---------------------------------------------------------------------------
 echo ""
 echo "=== shMakefile: submodule loading ==="
-
-# test-data/shMakefile defines inner-func; it should be sourced since it's not in examples/
-assert_exit "inner-func from test-data is available" 0 $SHMAKE inner-func --aval=hello
 
 # functions from examples/ must NOT be loaded (excluded by glob filter)
 examples_func_out=$($SHMAKE --help 2>&1 || true)

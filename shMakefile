@@ -30,10 +30,11 @@ done
 
 
 turbodeploy() {
-  ## test, build,push to the registry and deploy a service
   # (note: comments that starts with `##` are shown in `./shMakefile --help`
+  ## test, build,push to the registry and deploy a service
   mustVar env       # the environment to deploy in
   mustVar service   # the name of the service to deploy
+  
   
   h1 "Turbodeploy ${service} --> ${env}"
   
@@ -93,8 +94,7 @@ push-kubeservice() {
   mustVar env
   mustVar service
 
-  gitCommit=$(gitver)
-  gitBranch=$(git rev-parse --abbrev-ref HEAD | awk -F'/' '{print $NF}')
+  gitCommit=$(gitver)  
   r=${RANDOM} # add a random suffix to allow rebuild of images
   
   h1 "PUSHING service=${service} env=${env} git=${gitCommit}"
@@ -107,6 +107,8 @@ push-kubeservice() {
   log "AWS account ${awsAccountId}"
 
   # get the latest pushed chart
+  # shellcheck disable=SC2016 
+  # backticks are for the cli, nothing to exmpd in the query 
   latestChart=$(
     aws ecr describe-images \
       --region eu-west-1 \
@@ -121,12 +123,12 @@ push-kubeservice() {
   aws ecr get-login-password \
      --region eu-west-1 | helm registry login \
      --username AWS \
-     --password-stdin ${awsAccountId}.dkr.ecr.eu-west-1.amazonaws.com
+     --password-stdin "${awsAccountId}.dkr.ecr.eu-west-1.amazonaws.com"
 
   aws ecr get-login-password \
     --region eu-west-1 | docker login \
     --username AWS \
-    --password-stdin ${awsAccountId}.dkr.ecr.eu-west-1.amazonaws.com
+    --password-stdin "${awsAccountId}.dkr.ecr.eu-west-1.amazonaws.com"
 
   pushd "services/${service}" || exit
 
@@ -147,9 +149,9 @@ push-kubeservice() {
   sed -ibak "s/@/${image_tag}/" "${service}/Chart.yaml"
   sed "s/@/${image_tag}/" "${service}/values.yamltpl" > "${service}/values.yaml"
 
-  helm package ${service}
-  helm push ${chart_name}-${chart_tag}.tgz oci://${awsAccountId}.dkr.ecr.eu-west-1.amazonaws.com
-  rm ${chart_name}-${chart_tag}.tgz || true
+  helm package "${service}"
+  helm push "${chart_name}-${chart_tag}.tgz" "oci://${awsAccountId}.dkr.ecr.eu-west-1.amazonaws.com"
+  rm "${chart_name}-${chart_tag}.tgz" || true
   log "chart pushed"
   
   popd || true
@@ -174,21 +176,19 @@ deploy-kubeservice() {
     return $?
   fi
   
-  notify_deploy ${service} ${env}
-
   awsAccountId=$( aws sts get-caller-identity --query Account --output text )
   log "AWS account ${awsAccountId}"
   aws ecr get-login-password \
      --region eu-west-1 | helm registry login \
      --username AWS \
-     --password-stdin ${awsAccountId}.dkr.ecr.eu-west-1.amazonaws.com
+     --password-stdin "${awsAccountId}.dkr.ecr.eu-west-1.amazonaws.com"
 
   autoapprove=""
   if [ "${GITHUB_ACTIONS}" == "true" ]; then
     autoapprove="-auto-approve"
   fi
 
-  pushd services/${service}/stack/${env}/deployment || exit  
+  pushd "services/${service}/stack/${env}/deployment" || exit  
     terraform init
     terraform apply ${autoapprove}
   popd || exit  
@@ -199,8 +199,8 @@ deploy-kubeservice() {
 test-kubeservice() {
     mustVar service
     h1 "TESTING service=${service}"
-    go vet ./services/${service}/...
-    go test -timeout 180s -count=1 --parallel=6 ./services/${service}/
+    go vet "./services/${service}/..."
+    go test -timeout 180s -count=1 --parallel=6 "./services/${service}/"
 }
 
 # -- end safe edit zone #
