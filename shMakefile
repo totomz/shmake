@@ -135,10 +135,12 @@ push-kubeservice() {
 
   pushd "services/${service}" || exit
 
+  docker buildx create --name multiarch --driver docker-container --use 2>/dev/null || docker buildx use multiarch
+  
   log "Building & Pushing image image=${image_name}:${image_tag}"
   docker buildx build \
     --build-arg "ENV=${env}" \
-    --platform=linux/arm64 \
+    --platform=linux/arm64,linux/amd64 \
     --push \
     -t "${awsAccountId}.dkr.ecr.eu-west-1.amazonaws.com/${image_name}:${image_tag}" .
   
